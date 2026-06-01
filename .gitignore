@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+backend/app/venv/
+
+# Python caching and compiled bytecode
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Production/Distribution builds
+dist/
+build/
+.next/
+
+# Environments and Secrets
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE configurations
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
