@@ -14,9 +14,10 @@ services:
       - key: PYTHON_VERSION
         value: 3.10.0
 
-staticSites:
   # 2. Static Site (Frontend App)
-  - name: liftsync-frontend
+  - type: web
+    name: liftsync-frontend
+    runtime: static
     buildCommand: cd frontend && npm install && npm run build
     staticPublishPath: frontend/dist
     envVars:
