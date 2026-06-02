@@ -54,7 +54,7 @@ def identify_dominant_axis(accel_data: np.ndarray, gyro_data: np.ndarray) -> Tup
     else:
         return gyro_names[gyro_max_idx], gyro_data[:, gyro_max_idx]
 
-def segment_reputations(
+def segment_repetitions(
     accel_data: np.ndarray, 
     gyro_data: np.ndarray, 
     fs: float = 100.0
@@ -91,8 +91,12 @@ def segment_reputations(
     processed_signal_centered = filtered_signal - np.median(filtered_signal)
     
     # 4. Polarity detection: Determine if the dominant movement deflections are positive or negative
-    max_val = np.max(processed_signal_centered)
-    min_val = np.min(processed_signal_centered)
+    # Ignore the first 1.5 seconds (setup phase) to avoid setup spikes flipping polarity
+    setup_offset = int(fs * 1.5)
+    active_signal = processed_signal_centered[setup_offset:] if n_samples > setup_offset * 2 else processed_signal_centered
+    
+    max_val = np.max(active_signal) if len(active_signal) > 0 else 1.0
+    min_val = np.min(active_signal) if len(active_signal) > 0 else -1.0
     if np.abs(min_val) > np.abs(max_val):
         processed_signal = -processed_signal_centered
     else:
@@ -106,11 +110,11 @@ def segment_reputations(
     # Dynamic but bounded prominence threshold to prevent noise triggering or missing reps
     signal_std = np.std(processed_signal)
     if 'accel' in axis_name:
-        # Acceleration peak prominence: minimum 1.2 m/s^2, maximum 4.0 m/s^2
-        min_prominence = np.clip(0.4 * signal_std, 1.2, 4.0)
+        # Acceleration peak prominence: minimum 0.5 m/s^2, maximum 4.0 m/s^2
+        min_prominence = np.clip(0.4 * signal_std, 0.5, 4.0)
     else:
-        # Gyroscope peak prominence: minimum 0.6 rad/s, maximum 2.0 rad/s
-        min_prominence = np.clip(0.4 * signal_std, 0.6, 2.0)
+        # Gyroscope peak prominence: minimum 0.25 rad/s, maximum 2.0 rad/s
+        min_prominence = np.clip(0.4 * signal_std, 0.25, 2.0)
         
     peaks, properties = find_peaks(
         processed_signal, 

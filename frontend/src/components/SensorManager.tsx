@@ -70,13 +70,9 @@ export function SensorManager({
     // Resolve websocket URL dynamically
     let wsUrl = (import.meta as any).env?.VITE_WS_URL;
     if (!wsUrl) {
-      const hostname = window.location.hostname || 'localhost';
-      if (hostname === 'localhost' || hostname === '127.0.0.1') {
-        wsUrl = `ws://${hostname}:8000/ws/session`;
-      } else {
-        const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-        wsUrl = `${protocol}://${hostname}/ws/session`;
-      }
+      const host = window.location.host || 'localhost:3000';
+      const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+      wsUrl = `${protocol}://${host}/ws/session`;
     }
     
     try {
@@ -169,7 +165,8 @@ export function SensorManager({
             JSON.stringify({
               event: 'data',
               accel,
-              gyro
+              gyro,
+              fs: samplingRate || 100.0
             })
           );
         }
@@ -289,7 +286,7 @@ export function SensorManager({
 
       {/* Live Telemetry Panel (Only visible when active) */}
       {isListening && latestSample && (
-        <div className="bg-slate-900 text-slate-100 rounded-2xl p-4.5 space-y-3 shadow-inner border border-slate-800">
+        <div className="bg-slate-900 text-slate-100 rounded-2xl p-5 space-y-4 shadow-inner border border-slate-800">
           <div className="flex items-center justify-between">
             <span className="text-[10px] text-blue-400 font-bold uppercase tracking-wider">Live IMU Telemetry</span>
             <div className="flex items-center space-x-1.5">

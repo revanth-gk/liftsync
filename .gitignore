@@ -1,6 +1,7 @@
 # Dependencies
 node_modules/
-backend/app/venv/
+venv/
+backend/venv/
 
 # Python caching and compiled bytecode
 __pycache__/

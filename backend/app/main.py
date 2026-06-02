@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sklearn.ensemble import RandomForestClassifier
 from typing import List, Dict, Any, Tuple
 
-from processing.segmentation import segment_reputations
+from processing.segmentation import segment_repetitions
 from processing.features import extract_rep_features
 from processing.statistics import detect_form_break
 
@@ -117,6 +117,7 @@ class SessionManager:
         self.exercise = "unknown"
         self.mode = "workout" # "workout" or "calibrate"
         self.custom_baseline = None
+        self.fs = 100.0
 
     def add_data(self, accel_batch: List[List[float]], gyro_batch: List[List[float]]):
         self.raw_accel.extend(accel_batch)
@@ -128,7 +129,7 @@ class SessionManager:
         target_keys = ["jerk", "duration", "instability_ratio"]
         baseline = {}
         for k in target_keys:
-            vals = [rep["features"][k] for rep in self.rep_features_history]
+            vals = [rep[k] for rep in self.rep_features_history]
             baseline[f"{k}_mean"] = float(np.mean(vals))
             baseline[f"{k}_std"] = float(np.std(vals))
         return baseline
@@ -138,7 +139,7 @@ class SessionManager:
         gyro_np = np.array(self.raw_gyro)
         
         # 1. Segment repetitions
-        reps = segment_reputations(accel_np, gyro_np, fs=100.0)
+        reps = segment_repetitions(accel_np, gyro_np, fs=self.fs)
         
         # If no reps segmented yet, return blank status
         if not reps:
@@ -152,38 +153,37 @@ class SessionManager:
             
         self.dominant_axis = reps[0]["dominant_axis"]
         
-        # 2. Extract features and classify newly completed repetitions
-        new_reps_detected = len(reps) - self.processed_reps_count
+        # 2. Extract features and classify all repetitions
+        self.rep_features_history = []
+        self.rep_classifications = []
         
-        if new_reps_detected > 0:
-            for i in range(self.processed_reps_count, len(reps)):
-                rep = reps[i]
-                s_idx, e_idx = rep["start_idx"], rep["end_idx"]
-                
-                # Extract slices
-                accel_slice = accel_np[s_idx:e_idx + 1]
-                gyro_slice = gyro_np[s_idx:e_idx + 1]
-                
-                features = extract_rep_features(accel_slice, gyro_slice, fs=100.0)
-                
-                # Run ML Classifier: Fresh vs Fatigued
-                # Feature vector must match training: [duration, rms_accel, rms_gyro, jerk, disp, instability]
-                feature_vector = [
-                    features["duration"],
-                    features["rms_accel_mag"],
-                    features["rms_gyro_mag"],
-                    features["jerk"],
-                    features["displacement_p2p"],
-                    features["instability_ratio"]
-                ]
-                
-                prediction = clf.predict([feature_vector])[0]
-                classification_label = "Fatigued" if prediction == 1 else "Fresh"
-                
-                self.rep_features_history.append(features)
-                self.rep_classifications.append(classification_label)
-                
-            self.processed_reps_count = len(reps)
+        for rep in reps:
+            s_idx, e_idx = rep["start_idx"], rep["end_idx"]
+            
+            # Extract slices
+            accel_slice = accel_np[s_idx:e_idx + 1]
+            gyro_slice = gyro_np[s_idx:e_idx + 1]
+            
+            features = extract_rep_features(accel_slice, gyro_slice, fs=self.fs)
+            
+            # Run ML Classifier: Fresh vs Fatigued
+            # Feature vector must match training: [duration, rms_accel, rms_gyro, jerk, disp, instability]
+            feature_vector = [
+                features["duration"],
+                features["rms_accel_mag"],
+                features["rms_gyro_mag"],
+                features["jerk"],
+                features["displacement_p2p"],
+                features["instability_ratio"]
+            ]
+            
+            prediction = clf.predict([feature_vector])[0]
+            classification_label = "Fatigued" if prediction == 1 else "Fresh"
+            
+            self.rep_features_history.append(features)
+            self.rep_classifications.append(classification_label)
+            
+        self.processed_reps_count = len(reps)
             
         # 3. Apply CUSUM statistical change detection
         # Runs on the sliding window/list of rep features collected so far
@@ -248,6 +248,8 @@ async def websocket_endpoint(websocket: WebSocket):
             elif event == "data":
                 accel = data.get("accel", [])
                 gyro = data.get("gyro", [])
+                fs = data.get("fs", 100.0)
+                session.fs = fs
                 
                 if accel and gyro:
                     session.add_data(accel, gyro)

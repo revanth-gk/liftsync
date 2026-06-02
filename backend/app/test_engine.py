@@ -1,6 +1,6 @@
 import numpy as np
 from typing import List, Dict, Tuple, Any
-from processing.segmentation import segment_reputations
+from processing.segmentation import segment_repetitions
 from processing.features import extract_rep_features
 from processing.statistics import detect_form_break
 from sklearn.ensemble import RandomForestClassifier
@@ -112,7 +112,7 @@ def main():
     
     # 2. Run repetition segmentation
     print("\n[Test Bench] Running segmentation.py...")
-    reps = segment_reputations(accel_all, gyro_all, fs=fs)
+    reps = segment_repetitions(accel_all, gyro_all, fs=fs)
     print(f"Segmented {len(reps)} repetitions successfully.")
     
     if len(reps) == 0:
