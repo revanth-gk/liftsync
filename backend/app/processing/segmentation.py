@@ -127,31 +127,38 @@ def segment_repetitions(
         # 6. Locate start and end of rep (valleys on either side of the peak)
         # Search backwards for start
         start_idx = peak
+        max_search_dist = int(3.0 * fs)
         while start_idx > 0:
+            if (peak - start_idx) > max_search_dist:
+                start_idx = peak - int(1.2 * fs)
+                break
             if start_idx <= 2:
                 start_idx = 0
                 break
-            # Break if signal drops below 15% of the peak value (returned to baseline)
-            if processed_signal[start_idx] < 0.15 * processed_signal[peak]:
+            # Break if signal drops below 65% of the peak value (returned to baseline)
+            if processed_signal[start_idx] < 0.65 * processed_signal[peak]:
                 break
-            # Or if it's a local minimum below 30% of peak
+            # Or if it's a local minimum below 80% of peak
             if processed_signal[start_idx - 1] >= processed_signal[start_idx] <= processed_signal[start_idx + 1]:
-                if processed_signal[start_idx] < 0.3 * processed_signal[peak]:
+                if processed_signal[start_idx] < 0.80 * processed_signal[peak]:
                     break
             start_idx -= 1
             
         # Search forwards for end
         end_idx = peak
         while end_idx < n_samples - 1:
+            if (end_idx - peak) > max_search_dist:
+                end_idx = peak + int(1.2 * fs)
+                break
             if end_idx >= n_samples - 3:
                 end_idx = n_samples - 1
                 break
-            # Break if signal drops below 15% of the peak value (returned to baseline)
-            if processed_signal[end_idx] < 0.15 * processed_signal[peak]:
+            # Break if signal drops below 65% of the peak value (returned to baseline)
+            if processed_signal[end_idx] < 0.65 * processed_signal[peak]:
                 break
-            # Or if it's a local minimum below 30% of peak
+            # Or if it's a local minimum below 80% of peak
             if processed_signal[end_idx - 1] >= processed_signal[end_idx] <= processed_signal[end_idx + 1]:
-                if processed_signal[end_idx] < 0.3 * processed_signal[peak]:
+                if processed_signal[end_idx] < 0.80 * processed_signal[peak]:
                     break
             end_idx += 1
             
