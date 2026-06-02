@@ -128,14 +128,14 @@ export function Dashboard({ sessionData, isSessionActive, exercise }: DashboardP
     ],
   };
 
-  const chartOptions = {
+  const chartOptions: any = {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
       legend: {
         position: 'top' as const,
         labels: {
-          font: { size: 10, weight: '500' },
+          font: { size: 10, weight: 'bold' },
           boxWidth: 10,
         }
       },
