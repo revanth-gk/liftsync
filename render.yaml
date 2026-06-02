@@ -6,7 +6,7 @@ services:
   # 1. FastAPI Web Service (Backend Engine)
   - type: web
     name: liftsync-backend
-    env: python
+    runtime: python
     plan: free # Use free tier by default
     buildCommand: pip install -r backend/app/requirements.txt
     startCommand: cd backend/app && uvicorn main:app --host 0.0.0.0 --port $PORT
