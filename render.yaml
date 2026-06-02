@@ -17,11 +17,11 @@ services:
       - key: PORT
         value: 10000
 
+staticSites:
   # 2. Static Site (Frontend App - Optional Render Host)
   # NOTE: You can alternatively host the frontend on Vercel (highly recommended for performance).
-  # If hosting the frontend on Vercel, delete this static service block and connect your frontend folder directly to Vercel.
-  - type: static
-    name: liftsync-frontend
+  # If hosting the frontend on Vercel, delete this staticSites block and connect your frontend folder directly to Vercel.
+  - name: liftsync-frontend
     region: oregon
     buildCommand: cd frontend && npm install && npm run build
     publishDir: frontend/dist
