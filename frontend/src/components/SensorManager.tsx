@@ -13,6 +13,7 @@ interface SensorManagerProps {
   isCalibrating: boolean;
   setIsCalibrating: (val: boolean) => void;
   calibrationRepCount: number;
+  modeFilter?: 'calibrate' | 'workout' | 'both';
 }
 
 export function SensorManager({
@@ -25,7 +26,8 @@ export function SensorManager({
   savedBaseline,
   isCalibrating,
   setIsCalibrating,
-  calibrationRepCount
+  calibrationRepCount,
+  modeFilter = 'both'
 }: SensorManagerProps) {
   const {
     permission,
@@ -182,6 +184,13 @@ export function SensorManager({
     };
   }, [isListening, wsStatus, flushBuffers]);
 
+  // Synchronize external session shutdown (e.g. from App timer expiration)
+  useEffect(() => {
+    if (!isSessionActive && isListening) {
+      handleStopSession();
+    }
+  }, [isSessionActive, isListening]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -209,21 +218,25 @@ export function SensorManager({
           </button>
         ) : (
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => startSession(true)}
-              disabled={wsStatus === 'connecting'}
-              className="flex items-center space-x-1.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-all duration-200"
-            >
-              <span>Calibrate (5 reps)</span>
-            </button>
-            <button
-              onClick={() => startSession(false)}
-              disabled={wsStatus === 'connecting'}
-              className="flex items-center space-x-1.5 px-4 py-2.5 rounded-xl font-semibold text-xs bg-blue-600 text-white hover:bg-blue-700 shadow-md shadow-blue-100 transition-all duration-200"
-            >
-              <Play className="w-3.5 h-3.5 fill-current" />
-              <span>Start Workout</span>
-            </button>
+            {(modeFilter === 'both' || modeFilter === 'calibrate') && (
+              <button
+                onClick={() => startSession(true)}
+                disabled={wsStatus === 'connecting'}
+                className="flex items-center space-x-1.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-all duration-200"
+              >
+                <span>Calibrate (5 reps)</span>
+              </button>
+            )}
+            {(modeFilter === 'both' || modeFilter === 'workout') && (
+              <button
+                onClick={() => startSession(false)}
+                disabled={wsStatus === 'connecting'}
+                className="flex items-center space-x-1.5 px-4 py-2.5 rounded-xl font-semibold text-xs bg-blue-600 text-white hover:bg-blue-700 shadow-md shadow-blue-100 transition-all duration-200"
+              >
+                <Play className="w-3.5 h-3.5 fill-current" />
+                <span>Start Workout</span>
+              </button>
+            )}
           </div>
         )}
       </div>

@@ -78,7 +78,7 @@ def segment_reputations(
         ]
     """
     n_samples = len(accel_data)
-    if n_samples < int(fs * 2.0): # Need at least 2 seconds of data to find repetitions
+    if n_samples < int(fs * 1.5): # Need at least 1.5 seconds of data to find repetitions
         return []
         
     # 1. Identify dominant axis and retrieve its signal
@@ -87,26 +87,31 @@ def segment_reputations(
     # 2. Filter the signal (Low-pass Butterworth filter at 2 Hz to remove jitter/noise)
     filtered_signal = butter_lowpass_filter(raw_signal, cutoff=2.0, fs=fs, order=2)
     
-    # 3. Demean to look for peaks relative to baseline
-    filtered_demeaned = filtered_signal - np.mean(filtered_signal)
+    # 3. Demean using median (much more robust to outliers/active spikes than mean)
+    processed_signal_centered = filtered_signal - np.median(filtered_signal)
     
     # 4. Polarity detection: Determine if the dominant movement deflections are positive or negative
-    # If the negative deflection has a larger absolute magnitude, flip the signal to make peaks positive.
-    max_val = np.max(filtered_demeaned)
-    min_val = np.min(filtered_demeaned)
+    max_val = np.max(processed_signal_centered)
+    min_val = np.min(processed_signal_centered)
     if np.abs(min_val) > np.abs(max_val):
-        processed_signal = -filtered_demeaned
+        processed_signal = -processed_signal_centered
     else:
-        processed_signal = filtered_demeaned
+        processed_signal = processed_signal_centered
         
     # 5. Find peaks in the processed signal
-    # A typical gym rep takes 1.0 to 6.0 seconds. Set minimum distance between peaks to 1.2s.
-    min_distance = int(1.2 * fs) 
+    # A typical gym rep takes 0.8 to 7.0 seconds. Set minimum distance between peaks to 1.0s.
+    min_distance = int(1.0 * fs) 
     
     # Prominence threshold: peak must stand out compared to surrounding valleys
+    # Dynamic but bounded prominence threshold to prevent noise triggering or missing reps
     signal_std = np.std(processed_signal)
-    min_prominence = max(0.5 * signal_std, 0.1) # Noise floor guard
-    
+    if 'accel' in axis_name:
+        # Acceleration peak prominence: minimum 1.2 m/s^2, maximum 4.0 m/s^2
+        min_prominence = np.clip(0.4 * signal_std, 1.2, 4.0)
+    else:
+        # Gyroscope peak prominence: minimum 0.6 rad/s, maximum 2.0 rad/s
+        min_prominence = np.clip(0.4 * signal_std, 0.6, 2.0)
+        
     peaks, properties = find_peaks(
         processed_signal, 
         distance=min_distance, 
@@ -124,8 +129,8 @@ def segment_reputations(
                 break
             # Check for local minimum (valley)
             if processed_signal[start_idx - 1] >= processed_signal[start_idx] <= processed_signal[start_idx + 1]:
-                # Valley is close to zero/noise floor
-                if processed_signal[start_idx] < 0.25 * processed_signal[peak] or processed_signal[start_idx] < min_prominence:
+                # Stop if it falls below 50% of the peak value
+                if processed_signal[start_idx] < 0.5 * processed_signal[peak]:
                     break
             start_idx -= 1
             
@@ -137,13 +142,13 @@ def segment_reputations(
                 break
             # Check for local minimum (valley)
             if processed_signal[end_idx - 1] >= processed_signal[end_idx] <= processed_signal[end_idx + 1]:
-                if processed_signal[end_idx] < 0.25 * processed_signal[peak] or processed_signal[end_idx] < min_prominence:
+                if processed_signal[end_idx] < 0.5 * processed_signal[peak]:
                     break
             end_idx += 1
             
-        # 7. Sanity check representation duration (must be between 1.0s and 6.0s)
+        # 7. Sanity check representation duration (must be between 0.8s and 7.0s)
         duration = (end_idx - start_idx) / fs
-        if 1.0 <= duration <= 6.0:
+        if 0.8 <= duration <= 7.0:
             reps.append({
                 "start_idx": int(start_idx),
                 "peak_idx": int(peak),
