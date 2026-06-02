@@ -110,11 +110,11 @@ def segment_repetitions(
     # Dynamic but bounded prominence threshold to prevent noise triggering or missing reps
     signal_std = np.std(processed_signal)
     if 'accel' in axis_name:
-        # Acceleration peak prominence: minimum 0.5 m/s^2, maximum 4.0 m/s^2
-        min_prominence = np.clip(0.4 * signal_std, 0.5, 4.0)
+        # Acceleration peak prominence: minimum 0.3 m/s^2, maximum 4.0 m/s^2
+        min_prominence = np.clip(0.3 * signal_std, 0.3, 4.0)
     else:
-        # Gyroscope peak prominence: minimum 0.25 rad/s, maximum 2.0 rad/s
-        min_prominence = np.clip(0.4 * signal_std, 0.25, 2.0)
+        # Gyroscope peak prominence: minimum 0.15 rad/s, maximum 2.0 rad/s
+        min_prominence = np.clip(0.3 * signal_std, 0.15, 2.0)
         
     peaks, properties = find_peaks(
         processed_signal, 
@@ -131,10 +131,12 @@ def segment_repetitions(
             if start_idx <= 2:
                 start_idx = 0
                 break
-            # Check for local minimum (valley)
+            # Break if signal drops below 15% of the peak value (returned to baseline)
+            if processed_signal[start_idx] < 0.15 * processed_signal[peak]:
+                break
+            # Or if it's a local minimum below 30% of peak
             if processed_signal[start_idx - 1] >= processed_signal[start_idx] <= processed_signal[start_idx + 1]:
-                # Stop if it falls below 50% of the peak value
-                if processed_signal[start_idx] < 0.5 * processed_signal[peak]:
+                if processed_signal[start_idx] < 0.3 * processed_signal[peak]:
                     break
             start_idx -= 1
             
@@ -144,9 +146,12 @@ def segment_repetitions(
             if end_idx >= n_samples - 3:
                 end_idx = n_samples - 1
                 break
-            # Check for local minimum (valley)
+            # Break if signal drops below 15% of the peak value (returned to baseline)
+            if processed_signal[end_idx] < 0.15 * processed_signal[peak]:
+                break
+            # Or if it's a local minimum below 30% of peak
             if processed_signal[end_idx - 1] >= processed_signal[end_idx] <= processed_signal[end_idx + 1]:
-                if processed_signal[end_idx] < 0.5 * processed_signal[peak]:
+                if processed_signal[end_idx] < 0.3 * processed_signal[peak]:
                     break
             end_idx += 1
             
