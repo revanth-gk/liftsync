@@ -1,7 +1,7 @@
 # LiftSync
 
 LiftSync is a real-time exercise repetition segmentation and form degradation detection engine. It uses biomechanical signals from IMU sensors (accelerometer and gyroscope) to analyze workout performance.
-
+This is our project
 ## Overview
 
 The application is split into two parts:
