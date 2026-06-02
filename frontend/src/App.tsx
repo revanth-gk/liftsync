@@ -48,6 +48,9 @@ export function App() {
   const [isSessionActive, setIsSessionActive] = useState<boolean>(false);
   const [selectedExercise, setSelectedExercise] = useState<string>('bicep_curl');
   const [showReport, setShowReport] = useState<boolean>(false);
+  const [baselines, setBaselines] = useState<Record<string, any>>({});
+  const [isCalibrating, setIsCalibrating] = useState<boolean>(false);
+  const [calibrationRepCount, setCalibrationRepCount] = useState<number>(0);
 
   // Register PWA service worker on launch
   useEffect(() => {
@@ -65,6 +68,9 @@ export function App() {
 
   const handleUpdateSessionData = (data: SessionData) => {
     setSessionData(data);
+    if (isCalibrating) {
+      setCalibrationRepCount(data.rep_count);
+    }
   };
 
   const handleSessionReset = () => {
@@ -122,6 +128,19 @@ export function App() {
 
   const activeExerciseObj = exercises.find(e => e.id === selectedExercise) || exercises[0];
 
+  const handleUpdateCalibrationBaseline = (baseline: any) => {
+    setBaselines(prev => ({ ...prev, [selectedExercise]: baseline }));
+    setIsCalibrating(false);
+    alert(`Calibration completed for ${activeExerciseObj.name}! Custom baseline saved.`);
+  };
+
+  const handleSetIsCalibrating = (val: boolean) => {
+    setIsCalibrating(val);
+    if (val) {
+      setCalibrationRepCount(0);
+    }
+  };
+
   return (
     <Layout>
       {/* Exercise Selector Grid */}
@@ -164,6 +183,11 @@ export function App() {
                 </div>
                 <span className="font-bold text-[10px] whitespace-nowrap leading-none mb-1">{ex.name}</span>
                 <span className="text-[8px] text-slate-400 font-medium leading-none block">{ex.target}</span>
+                {baselines[ex.id] && (
+                  <span className="mt-1.5 text-[8px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full">
+                    ✓ Calibrated
+                  </span>
+                )}
               </button>
             );
           })}
@@ -177,6 +201,11 @@ export function App() {
         setIsSessionActive={setIsSessionActive}
         onSessionReset={handleSessionReset}
         selectedExercise={selectedExercise}
+        onUpdateCalibrationBaseline={handleUpdateCalibrationBaseline}
+        savedBaseline={baselines[selectedExercise] || null}
+        isCalibrating={isCalibrating}
+        setIsCalibrating={handleSetIsCalibrating}
+        calibrationRepCount={calibrationRepCount}
       />
 
       {/* Dynamic Strapping Guide Card */}

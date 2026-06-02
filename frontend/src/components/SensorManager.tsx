@@ -8,6 +8,11 @@ interface SensorManagerProps {
   setIsSessionActive: (active: boolean) => void;
   onSessionReset: () => void;
   selectedExercise: string;
+  onUpdateCalibrationBaseline: (baseline: any) => void;
+  savedBaseline: any;
+  isCalibrating: boolean;
+  setIsCalibrating: (val: boolean) => void;
+  calibrationRepCount: number;
 }
 
 export function SensorManager({
@@ -15,7 +20,12 @@ export function SensorManager({
   isSessionActive,
   setIsSessionActive,
   onSessionReset,
-  selectedExercise
+  selectedExercise,
+  onUpdateCalibrationBaseline,
+  savedBaseline,
+  isCalibrating,
+  setIsCalibrating,
+  calibrationRepCount
 }: SensorManagerProps) {
   const {
     permission,
@@ -23,6 +33,7 @@ export function SensorManager({
     samplingRate,
     isThrottled,
     isListening,
+    latestSample,
     startListening,
     stopListening,
     flushBuffers
@@ -35,17 +46,12 @@ export function SensorManager({
   const sendIntervalRef = useRef<number | null>(null);
 
   // Initialize/terminate session
-  const toggleSession = async () => {
-    if (isSessionActive) {
-      // Stop session
-      handleStopSession();
-    } else {
-      // Start session
-      handleStartSession();
-    }
+  const startSession = async (calibrateMode: boolean) => {
+    setIsCalibrating(calibrateMode);
+    handleStartSession(calibrateMode);
   };
 
-  const handleStartSession = async () => {
+  const handleStartSession = async (calibrateMode: boolean) => {
     setErrorMessage(null);
     onSessionReset();
 
@@ -78,8 +84,15 @@ export function SensorManager({
       ws.onopen = () => {
         setWsStatus('connected');
         setIsSessionActive(true);
-        // Send initial start signal with selected exercise
-        ws.send(JSON.stringify({ event: 'start', exercise: selectedExercise }));
+        // Send initial start signal with selected exercise, mode, and baseline
+        ws.send(
+          JSON.stringify({
+            event: 'start',
+            exercise: selectedExercise,
+            mode: calibrateMode ? 'calibrate' : 'workout',
+            baseline: savedBaseline
+          })
+        );
         // Start capturing device motion
         startListening();
       };
@@ -89,6 +102,12 @@ export function SensorManager({
           const response = JSON.parse(event.data);
           if (response.status === 'processing' || response.status === 'session_stopped') {
             onUpdateSessionData(response.data);
+          } else if (response.status === 'calibration_completed') {
+            onUpdateCalibrationBaseline(response.baseline);
+            if (response.data) {
+              onUpdateSessionData(response.data);
+            }
+            handleStopSession();
           } else if (response.status === 'error') {
             setErrorMessage(response.message);
           }
@@ -174,38 +193,39 @@ export function SensorManager({
   return (
     <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm space-y-4">
       {/* Session Controls */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <div>
           <h2 className="font-semibold text-slate-900">Workout Tracker</h2>
           <p className="text-xs text-slate-400 font-medium">Capture movement data</p>
         </div>
 
-        <button
-          onClick={toggleSession}
-          disabled={wsStatus === 'connecting'}
-          className={`flex items-center space-x-2 px-5 py-3 rounded-2xl font-semibold text-sm shadow-md transition-all duration-200 ${
-            isSessionActive
-              ? 'bg-rose-50 text-rose-600 hover:bg-rose-100 shadow-rose-100'
-              : 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-100'
-          }`}
-        >
-          {wsStatus === 'connecting' ? (
-            <>
-              <RefreshCw className="w-4 h-4 animate-spin" />
-              <span>Connecting...</span>
-            </>
-          ) : isSessionActive ? (
-            <>
-              <Square className="w-4 h-4 fill-current" />
-              <span>Stop Tracking</span>
-            </>
-          ) : (
-            <>
-              <Play className="w-4 h-4 fill-current" />
-              <span>Start Tracking</span>
-            </>
-          )}
-        </button>
+        {isSessionActive ? (
+          <button
+            onClick={handleStopSession}
+            className="flex items-center space-x-2 px-5 py-3 rounded-2xl font-semibold text-sm shadow-md transition-all duration-200 bg-rose-50 text-rose-600 hover:bg-rose-100 shadow-rose-100"
+          >
+            <Square className="w-4 h-4 fill-current" />
+            <span>{isCalibrating ? 'Stop Calibration' : 'Stop Tracking'}</span>
+          </button>
+        ) : (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => startSession(true)}
+              disabled={wsStatus === 'connecting'}
+              className="flex items-center space-x-1.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-all duration-200"
+            >
+              <span>Calibrate (5 reps)</span>
+            </button>
+            <button
+              onClick={() => startSession(false)}
+              disabled={wsStatus === 'connecting'}
+              className="flex items-center space-x-1.5 px-4 py-2.5 rounded-xl font-semibold text-xs bg-blue-600 text-white hover:bg-blue-700 shadow-md shadow-blue-100 transition-all duration-200"
+            >
+              <Play className="w-3.5 h-3.5 fill-current" />
+              <span>Start Workout</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Network and Perm Status Badge */}
@@ -251,6 +271,73 @@ export function SensorManager({
           <div>
             <span className="font-bold">Incompatible Device!</span> This browser does not support physical accelerometer / gyroscope motion event endpoints. Run the app on a mobile device.
           </div>
+        </div>
+      )}
+
+      {/* Live Telemetry Panel (Only visible when active) */}
+      {isListening && latestSample && (
+        <div className="bg-slate-900 text-slate-100 rounded-2xl p-4.5 space-y-3 shadow-inner border border-slate-800">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-blue-400 font-bold uppercase tracking-wider">Live IMU Telemetry</span>
+            <div className="flex items-center space-x-1.5">
+              <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping" />
+              <span className="text-[9px] text-slate-400 font-bold uppercase">Streaming</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3.5 text-[11px]">
+            {/* Linear Acceleration Magnitude Meter */}
+            <div className="space-y-1.5">
+              <div className="flex justify-between font-mono text-[9.5px]">
+                <span className="text-slate-400 font-semibold">Motion Force</span>
+                <span className="text-slate-200 font-bold">
+                  {Math.sqrt(
+                    latestSample.linearAccel[0] ** 2 +
+                    latestSample.linearAccel[1] ** 2 +
+                    latestSample.linearAccel[2] ** 2
+                  ).toFixed(2)} m/s²
+                </span>
+              </div>
+              <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all duration-100"
+                  style={{ 
+                    width: `${Math.min(100, Math.sqrt(
+                      latestSample.linearAccel[0] ** 2 +
+                      latestSample.linearAccel[1] ** 2 +
+                      latestSample.linearAccel[2] ** 2
+                    ) * 10)}%` 
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Tilt Angle (Pitch / Beta angle) */}
+            <div className="space-y-1.5">
+              <div className="flex justify-between font-mono text-[9.5px]">
+                <span className="text-slate-400 font-semibold">Device Tilt</span>
+                <span className="text-slate-200 font-bold">
+                  {Math.round(latestSample.orientation.beta)}°
+                </span>
+              </div>
+              <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-gradient-to-r from-amber-500 to-rose-500 transition-all duration-100"
+                  style={{ 
+                    width: `${Math.min(100, Math.abs(latestSample.orientation.beta) / 1.8)}%` 
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Calibrating Progress Count Indicator */}
+          {isCalibrating && (
+            <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-[11px]">
+              <span className="text-slate-400 font-semibold">Calibration Progress:</span>
+              <span className="text-amber-400 font-extrabold font-mono">{calibrationRepCount} / 5 reps</span>
+            </div>
+          )}
         </div>
       )}
 

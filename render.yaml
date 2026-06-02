@@ -7,22 +7,16 @@ services:
   - type: web
     name: liftsync-backend
     env: python
-    region: oregon # Render default
     plan: free # Use free tier by default
     buildCommand: pip install -r backend/app/requirements.txt
     startCommand: cd backend/app && uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION
         value: 3.10.0
-      - key: PORT
-        value: 10000
 
-  # 2. Static Site (Frontend App - Optional Render Host)
-  # NOTE: You can alternatively host the frontend on Vercel (highly recommended for performance).
-  # If hosting the frontend on Vercel, delete this static service block and connect your frontend folder directly to Vercel.
-  - type: web
-    name: liftsync-frontend
-    runtime: static
+staticSites:
+  # 2. Static Site (Frontend App)
+  - name: liftsync-frontend
     buildCommand: cd frontend && npm install && npm run build
     staticPublishPath: frontend/dist
     envVars:

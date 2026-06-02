@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
 export interface IMUSample {
-  accel: [number, number, number]; // [x, y, z] in m/s^2
-  gyro: [number, number, number];  // [x, y, z] in rad/s (converted from deg/s)
+  accel: [number, number, number]; // [x, y, z] in m/s^2 (including gravity)
+  linearAccel: [number, number, number]; // [x, y, z] in m/s^2 (excluding gravity)
+  gyro: [number, number, number];  // [x, y, z] in rad/s
+  orientation: { alpha: number; beta: number; gamma: number }; // yaw, pitch, roll in degrees
   timestamp: number;
 }
 
@@ -25,6 +27,17 @@ export function useDeviceMotion() {
   const lastEventTimeRef = useRef<number>(0);
   const eventTimestampsRef = useRef<number[]>([]);
   const sampleCountRef = useRef<number>(0);
+
+  // Orientation reference (yaw, pitch, roll)
+  const orientationRef = useRef<{ alpha: number; beta: number; gamma: number }>({ alpha: 0, beta: 0, gamma: 0 });
+
+  const handleDeviceOrientation = useCallback((event: DeviceOrientationEvent) => {
+    orientationRef.current = {
+      alpha: event.alpha ?? 0,
+      beta: event.beta ?? 0,
+      gamma: event.gamma ?? 0
+    };
+  }, []);
 
   // Check if DeviceMotionEvent is supported on the browser
   useEffect(() => {
@@ -79,6 +92,7 @@ export function useDeviceMotion() {
   const handleDeviceMotion = useCallback((event: DeviceMotionEvent) => {
     const now = performance.now();
     const accel = event.accelerationIncludingGravity;
+    const accelNoGrav = event.acceleration;
     const gyro = event.rotationRate;
     
     if (!accel) return;
@@ -88,6 +102,11 @@ export function useDeviceMotion() {
     const ay = accel.y ?? 0.0;
     const az = accel.z ?? 0.0;
 
+    // Parse linear acceleration (excluding gravity)
+    const lax = accelNoGrav?.x ?? 0.0;
+    const lay = accelNoGrav?.y ?? 0.0;
+    const laz = accelNoGrav?.z ?? 0.0;
+
     // 2. Parse and convert gyroscope data from degrees/sec to radians/sec
     // beta, gamma, alpha are degrees per second
     const degToRad = Math.PI / 180.0;
@@ -95,7 +114,7 @@ export function useDeviceMotion() {
     const gy = (gyro?.gamma ?? 0.0) * degToRad;
     const gz = (gyro?.alpha ?? 0.0) * degToRad;
 
-    // 3. Append to performance buffers
+    // 3. Append to performance buffers (we send accelerationIncludingGravity to maintain backend feature calculation consistency)
     accelBufferRef.current.push([ax, ay, az]);
     gyroBufferRef.current.push([gx, gy, gz]);
 
@@ -123,7 +142,9 @@ export function useDeviceMotion() {
     if (sampleCountRef.current % 10 === 0) {
       setLatestSample({
         accel: [ax, ay, az],
+        linearAccel: [lax, lay, laz],
         gyro: [gx, gy, gz],
+        orientation: { ...orientationRef.current },
         timestamp: Date.now()
       });
     }
@@ -141,15 +162,17 @@ export function useDeviceMotion() {
     sampleCountRef.current = 0;
     
     window.addEventListener('devicemotion', handleDeviceMotion);
+    window.addEventListener('deviceorientation', handleDeviceOrientation);
     setIsListening(true);
-  }, [permission, handleDeviceMotion]);
+  }, [permission, handleDeviceMotion, handleDeviceOrientation]);
 
   const stopListening = useCallback(() => {
     window.removeEventListener('devicemotion', handleDeviceMotion);
+    window.removeEventListener('deviceorientation', handleDeviceOrientation);
     setIsListening(false);
     setSamplingRate(0);
     setIsThrottled(false);
-  }, [handleDeviceMotion]);
+  }, [handleDeviceMotion, handleDeviceOrientation]);
 
   // Flush buffer function for WebSocket batches
   const flushBuffers = useCallback((): { accel: number[][]; gyro: number[][] } => {
@@ -166,8 +189,9 @@ export function useDeviceMotion() {
   useEffect(() => {
     return () => {
       window.removeEventListener('devicemotion', handleDeviceMotion);
+      window.removeEventListener('deviceorientation', handleDeviceOrientation);
     };
-  }, [handleDeviceMotion]);
+  }, [handleDeviceMotion, handleDeviceOrientation]);
 
   return {
     permission,

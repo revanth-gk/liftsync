@@ -49,15 +49,22 @@ export function WorkoutReport({ exercise, sessionData, onClose }: WorkoutReportP
   const { rep_count, reps, form_break_idx, recommended_ceiling } = sessionData;
 
   // 1. Calculate Biomechanical Performance Score
-  const avgInstability = reps.reduce((acc, r) => acc + r.features.instability_ratio, 0) / reps.length;
-  const avgJerk = reps.reduce((acc, r) => acc + r.features.jerk, 0) / reps.length;
-  
-  // Penalties
-  const instabilityPen = Math.min(35, avgInstability * 120); // up to 35 points off for instability
-  const jerkPen = Math.min(35, Math.max(0, avgJerk - 2) * 5); // up to 35 points off for tremor
-  const formBreakPen = form_break_idx !== -1 ? 20 : 0; // 20 points off if form degraded
-  
-  const score = Math.max(40, Math.round(100 - instabilityPen - jerkPen - formBreakPen));
+  let score = 100;
+  if (form_break_idx !== -1) {
+    // Score reflects the proportion of completed repetitions with stable form
+    const cleanRatio = (form_break_idx - 1) / rep_count;
+    // Scale score between 45 and 85 depending on clean reps percentage
+    score = Math.round(45 + cleanRatio * 40);
+  } else {
+    // Deduct slightly based on overall average instability and jerk tremor
+    const avgInstability = reps.reduce((acc, r) => acc + r.features.instability_ratio, 0) / reps.length;
+    const avgJerk = reps.reduce((acc, r) => acc + r.features.jerk, 0) / reps.length;
+    
+    const instabilityPen = Math.min(15, avgInstability * 40);
+    const jerkPen = Math.min(15, Math.max(0, avgJerk - 10) * 0.15);
+    score = Math.round(100 - instabilityPen - jerkPen);
+  }
+  score = Math.max(40, Math.min(100, score));
 
   // Get score description and color
   let scoreColor = 'text-emerald-500 bg-emerald-50 border-emerald-100';
@@ -168,7 +175,7 @@ export function WorkoutReport({ exercise, sessionData, onClose }: WorkoutReportP
               </span>
               <h3 className="font-bold text-slate-800 text-xs">Biomechanical Stability</h3>
               <p className="text-[10px] text-slate-400 font-medium leading-relaxed">
-                Evaluated against initial calibration baseline (Reps 1–3).
+                Evaluated against your baseline profile.
               </p>
             </div>
           </div>

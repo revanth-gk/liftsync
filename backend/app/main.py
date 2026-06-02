@@ -41,28 +41,55 @@ def train_classifier():
     # 4: displacement_p2p (m)
     # 5: instability_ratio
     
-    # Fresh repetitions (consistent speed, low jerk/shakiness, stable plane of motion)
-    fresh_samples = np.random.normal(
+    # Generate 50 samples of fresh & fatigued for each of the 3 exercises
+    # Bicep Curls
+    curls_fresh = np.random.normal(
         loc=[2.0, 6.0, 3.5, 2.5, 0.45, 0.05], 
         scale=[0.25, 0.8, 0.5, 0.5, 0.05, 0.02], 
-        size=(100, 6)
+        size=(50, 6)
     )
-    # Ensure values remain physically meaningful (positive)
-    fresh_samples = np.clip(fresh_samples, a_min=0.001, a_max=None)
-    
-    # Fatigued repetitions (longer duration/struggle, high jerk/instability, off-axis movements)
-    fatigued_samples = np.random.normal(
-        loc=[3.8, 5.0, 2.8, 7.5, 0.38, 0.28], 
-        scale=[0.5, 1.2, 0.8, 2.2, 0.07, 0.09], 
-        size=(100, 6)
+    curls_fatigued = np.random.normal(
+        loc=[3.5, 5.0, 2.8, 7.5, 0.38, 0.28], 
+        scale=[0.4, 1.0, 0.6, 1.8, 0.06, 0.08], 
+        size=(50, 6)
     )
-    fatigued_samples = np.clip(fatigued_samples, a_min=0.001, a_max=None)
     
-    X = np.vstack([fresh_samples, fatigued_samples])
-    y = np.array([0] * 100 + [1] * 100) # 0: Fresh, 1: Fatigued
+    # Squats
+    squats_fresh = np.random.normal(
+        loc=[2.8, 7.5, 1.2, 3.0, 0.70, 0.04], 
+        scale=[0.30, 1.0, 0.3, 0.6, 0.06, 0.015], 
+        size=(50, 6)
+    )
+    squats_fatigued = np.random.normal(
+        loc=[4.5, 6.0, 0.9, 9.0, 0.55, 0.22], 
+        scale=[0.5, 1.2, 0.4, 2.2, 0.08, 0.07], 
+        size=(50, 6)
+    )
+    
+    # Overhead Press
+    press_fresh = np.random.normal(
+        loc=[2.2, 6.5, 2.0, 3.5, 0.60, 0.07], 
+        scale=[0.25, 0.9, 0.4, 0.8, 0.05, 0.025], 
+        size=(50, 6)
+    )
+    press_fatigued = np.random.normal(
+        loc=[3.8, 5.2, 1.6, 10.0, 0.50, 0.30], 
+        scale=[0.4, 1.1, 0.5, 2.8, 0.07, 0.09], 
+        size=(50, 6)
+    )
+    
+    X_fresh = np.vstack([curls_fresh, squats_fresh, press_fresh])
+    X_fatigued = np.vstack([curls_fatigued, squats_fatigued, press_fatigued])
+    
+    # Ensure physical limits are met (values positive)
+    X_fresh = np.clip(X_fresh, a_min=0.001, a_max=None)
+    X_fatigued = np.clip(X_fatigued, a_min=0.001, a_max=None)
+    
+    X = np.vstack([X_fresh, X_fatigued])
+    y = np.array([0] * 150 + [1] * 150) # 0: Fresh, 1: Fatigued
     
     clf.fit(X, y)
-    print("[LiftSync Engine] Random Forest Classifier trained successfully on startup.")
+    print(f"[LiftSync Engine] Classifier trained successfully with {len(X)} exercise-specific patterns.")
 
 @app.on_event("startup")
 async def startup_event():
@@ -88,10 +115,23 @@ class SessionManager:
         self.rep_classifications = []
         self.dominant_axis = "unknown"
         self.exercise = "unknown"
+        self.mode = "workout" # "workout" or "calibrate"
+        self.custom_baseline = None
 
     def add_data(self, accel_batch: List[List[float]], gyro_batch: List[List[float]]):
         self.raw_accel.extend(accel_batch)
         self.raw_gyro.extend(gyro_batch)
+
+    def compute_calibration_baseline(self) -> Dict[str, float]:
+        if len(self.rep_features_history) < 3:
+            return {}
+        target_keys = ["jerk", "duration", "instability_ratio"]
+        baseline = {}
+        for k in target_keys:
+            vals = [rep["features"][k] for rep in self.rep_features_history]
+            baseline[f"{k}_mean"] = float(np.mean(vals))
+            baseline[f"{k}_std"] = float(np.std(vals))
+        return baseline
 
     def process_session(self) -> Dict[str, Any]:
         accel_np = np.array(self.raw_accel)
@@ -151,7 +191,8 @@ class SessionManager:
             self.rep_features_history,
             baseline_count=3,
             k_allowance=0.5,
-            h_threshold=3.0
+            h_threshold=3.0,
+            custom_baseline=self.custom_baseline
         )
         
         # 4. Construct response message
@@ -195,8 +236,14 @@ async def websocket_endpoint(websocket: WebSocket):
                 # Reset/Initialize session state
                 session = SessionManager()
                 session.exercise = data.get("exercise", "bicep_curl")
-                await websocket.send_json({"status": "session_started", "exercise": session.exercise})
-                print(f"[LiftSync WS] Session started for exercise: {session.exercise}")
+                session.mode = data.get("mode", "workout")
+                session.custom_baseline = data.get("baseline", None)
+                await websocket.send_json({
+                    "status": "session_started", 
+                    "exercise": session.exercise,
+                    "mode": session.mode
+                })
+                print(f"[LiftSync WS] Session started for exercise: {session.exercise} in {session.mode} mode.")
                 
             elif event == "data":
                 accel = data.get("accel", [])
@@ -207,17 +254,38 @@ async def websocket_endpoint(websocket: WebSocket):
                     
                     # Run processing pipeline on the accumulated signal buffer
                     result = session.process_session()
-                    await websocket.send_json({
-                        "status": "processing",
-                        "data": result
-                    })
+                    
+                    # If in calibrate mode and we reach 5 reps, complete calibration
+                    if session.mode == "calibrate" and result["rep_count"] >= 5:
+                        baseline = session.compute_calibration_baseline()
+                        await websocket.send_json({
+                            "status": "calibration_completed",
+                            "exercise": session.exercise,
+                            "baseline": baseline,
+                            "data": result
+                        })
+                        print(f"[LiftSync WS] Calibration completed for {session.exercise}.")
+                    else:
+                        await websocket.send_json({
+                            "status": "processing",
+                            "data": result
+                        })
                     
             elif event == "stop":
                 result = session.process_session()
-                await websocket.send_json({
-                    "status": "session_stopped",
-                    "data": result
-                })
+                if session.mode == "calibrate":
+                    baseline = session.compute_calibration_baseline()
+                    await websocket.send_json({
+                        "status": "calibration_completed",
+                        "exercise": session.exercise,
+                        "baseline": baseline,
+                        "data": result
+                    })
+                else:
+                    await websocket.send_json({
+                        "status": "session_stopped",
+                        "data": result
+                    })
                 print("[LiftSync WS] Session stopped.")
                 break
                 

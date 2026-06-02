@@ -73,18 +73,36 @@ export function Dashboard({ sessionData, isSessionActive, exercise }: DashboardP
   if (!sessionData || sessionData.rep_count === 0) {
     return (
       <div className="bg-white border border-slate-100 rounded-3xl p-8 shadow-sm flex flex-col items-center justify-center text-center space-y-4 min-h-[300px]">
-        <div className="bg-slate-50 text-slate-400 p-4 rounded-full flex items-center justify-center animate-pulse">
-          <Activity className="w-8 h-8" />
-        </div>
-        <div>
-          <h3 className="font-semibold text-slate-800 text-base">Awaiting Exercise Stream</h3>
-          <p className="text-xs text-slate-400 max-w-xs mt-1">
-            {isSessionActive 
-              ? "Start lifting. Repetitions will be automatically segmented and updated in real-time."
-              : "Click 'Start Tracking' and perform reps to see biomechanical analysis."
-            }
-          </p>
-        </div>
+        {isSessionActive ? (
+          <>
+            <div className="bg-blue-50 text-blue-500 p-4 rounded-full flex items-center justify-center animate-pulse">
+              <Activity className="w-8 h-8" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-slate-800 text-base">Streaming Biomechanical Signals</h3>
+              <p className="text-xs text-slate-400 max-w-xs mt-1">
+                Engine is active. Perform reps now. Repetitions will appear dynamically as they are segmented.
+              </p>
+              <div className="flex items-center justify-center space-x-1.5 mt-4">
+                <div className="w-1.5 h-3 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
+                <div className="w-1.5 h-5 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
+                <div className="w-1.5 h-3 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0.3s' }} />
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="bg-slate-50 text-slate-400 p-4 rounded-full flex items-center justify-center">
+              <Activity className="w-8 h-8" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-slate-800 text-base">Awaiting Exercise Stream</h3>
+              <p className="text-xs text-slate-400 max-w-xs mt-1">
+                Click 'Start Workout' or 'Calibrate' and perform reps to see biomechanical analysis.
+              </p>
+            </div>
+          </>
+        )}
       </div>
     );
   }
