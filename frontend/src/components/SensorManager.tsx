@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useDeviceMotion } from '../hooks/useDeviceMotion';
-import { Wifi, WifiOff, Play, Square, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Wifi, WifiOff, Play, Square, AlertTriangle } from 'lucide-react';
 
 interface SensorManagerProps {
   onUpdateSessionData: (data: any) => void;
@@ -47,8 +47,18 @@ export function SensorManager({
   const wsRef = useRef<WebSocket | null>(null);
   const sendIntervalRef = useRef<number | null>(null);
 
+  // Use a ref to preserve calibrate mode flag across async WS message handlers.
+  // The React state `isCalibrating` may be stale inside closures; the ref is always current.
+  const isCalibratingRef = useRef<boolean>(false);
+
+  // Keep the ref in sync with the prop
+  useEffect(() => {
+    isCalibratingRef.current = isCalibrating;
+  }, [isCalibrating]);
+
   // Initialize/terminate session
   const startSession = async (calibrateMode: boolean) => {
+    isCalibratingRef.current = calibrateMode;
     setIsCalibrating(calibrateMode);
     handleStartSession(calibrateMode);
   };
@@ -60,7 +70,7 @@ export function SensorManager({
     // 1. Negotiate sensor permissions
     const permitted = await requestPermission();
     if (!permitted) {
-      setErrorMessage('Camera/Sensor permissions are required to sample IMU data.');
+      setErrorMessage('Sensor permissions are required to sample IMU data.');
       return;
     }
 
@@ -73,9 +83,7 @@ export function SensorManager({
       const host = window.location.host || 'localhost:3000';
       const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
       
-      // Smart Auto-Resolution for Render Deployments:
-      // If deployed on Render (e.g. liftsync-frontend-xxxx.onrender.com),
-      // auto-infer the backend URL by replacing 'frontend' with 'backend'.
+      // Smart Auto-Resolution for Render deployments
       if (host.includes('liftsync-frontend') && host.includes('onrender.com')) {
         const backendHost = host.replace('liftsync-frontend', 'liftsync-backend');
         wsUrl = `${protocol}://${backendHost}/ws/session`;
@@ -110,11 +118,14 @@ export function SensorManager({
           if (response.status === 'processing' || response.status === 'session_stopped') {
             onUpdateSessionData(response.data);
           } else if (response.status === 'calibration_completed') {
+            // Use ref (not prop) so this always runs correctly even if React state is stale
             onUpdateCalibrationBaseline(response.baseline);
             if (response.data) {
               onUpdateSessionData(response.data);
             }
-            handleStopSession();
+            // Only call stop cleanup here — don't call setIsCalibrating(false),
+            // that's the parent's responsibility via onUpdateCalibrationBaseline
+            cleanupSession();
           } else if (response.status === 'error') {
             setErrorMessage(response.message);
           }
@@ -125,12 +136,11 @@ export function SensorManager({
 
       ws.onerror = () => {
         setErrorMessage('WebSocket connection error. Make sure the Python backend is running.');
-        handleStopSession();
+        cleanupSession();
       };
 
       ws.onclose = () => {
         setWsStatus('disconnected');
-        handleStopSession();
       };
 
     } catch (err: any) {
@@ -139,17 +149,15 @@ export function SensorManager({
     }
   };
 
-  const handleStopSession = () => {
-    setIsSessionActive(false);
+  // Cleans up WS and sensor listeners without touching calibrate state
+  const cleanupSession = () => {
     stopListening();
 
-    // Clear batch sending interval
     if (sendIntervalRef.current) {
       window.clearInterval(sendIntervalRef.current);
       sendIntervalRef.current = null;
     }
 
-    // Inform backend and close socket
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       try {
         wsRef.current.send(JSON.stringify({ event: 'stop' }));
@@ -161,8 +169,12 @@ export function SensorManager({
     wsRef.current = null;
   };
 
-  // Buffer batch sender loop
-  // Batches raw signals and flushes every 150ms (~15 frames at 100 Hz)
+  const handleStopSession = () => {
+    setIsSessionActive(false);
+    cleanupSession();
+  };
+
+  // Buffer batch sender loop — flushes every 150ms (~15 frames at 100 Hz)
   useEffect(() => {
     if (isListening && wsStatus === 'connected' && wsRef.current) {
       sendIntervalRef.current = window.setInterval(() => {
@@ -179,7 +191,7 @@ export function SensorManager({
             })
           );
         }
-      }, 150); // 150ms interval ~ 15 samples at 100 Hz
+      }, 150);
     }
 
     return () => {
@@ -228,7 +240,7 @@ export function SensorManager({
               <button
                 onClick={() => startSession(true)}
                 disabled={wsStatus === 'connecting'}
-                className="flex items-center space-x-1.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-all duration-200"
+                className="flex items-center space-x-1.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-all duration-200 disabled:opacity-50"
               >
                 <span>Calibrate (5 reps)</span>
               </button>
@@ -237,7 +249,7 @@ export function SensorManager({
               <button
                 onClick={() => startSession(false)}
                 disabled={wsStatus === 'connecting'}
-                className="flex items-center space-x-1.5 px-4 py-2.5 rounded-xl font-semibold text-xs bg-blue-600 text-white hover:bg-blue-700 shadow-md shadow-blue-100 transition-all duration-200"
+                className="flex items-center space-x-1.5 px-4 py-2.5 rounded-xl font-semibold text-xs bg-blue-600 text-white hover:bg-blue-700 shadow-md shadow-blue-100 transition-all duration-200 disabled:opacity-50"
               >
                 <Play className="w-3.5 h-3.5 fill-current" />
                 <span>Start Workout</span>
@@ -254,6 +266,11 @@ export function SensorManager({
             <>
               <Wifi className="w-4 h-4 text-emerald-500" />
               <span className="text-slate-600">Engine Connected</span>
+            </>
+          ) : wsStatus === 'connecting' ? (
+            <>
+              <Wifi className="w-4 h-4 text-amber-400 animate-pulse" />
+              <span className="text-amber-600">Connecting…</span>
             </>
           ) : (
             <>
@@ -288,7 +305,7 @@ export function SensorManager({
         <div className="flex items-start space-x-2.5 bg-rose-50 border border-rose-100 text-rose-800 p-3 rounded-2xl text-xs">
           <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
           <div>
-            <span className="font-bold">Incompatible Device!</span> This browser does not support physical accelerometer / gyroscope motion event endpoints. Run the app on a mobile device.
+            <span className="font-bold">Incompatible Device!</span> This browser does not support accelerometer / gyroscope motion event endpoints. Run the app on a mobile device.
           </div>
         </div>
       )}
@@ -331,7 +348,7 @@ export function SensorManager({
               </div>
             </div>
 
-            {/* Tilt Angle (Pitch / Beta angle) */}
+            {/* Tilt Angle */}
             <div className="space-y-1.5">
               <div className="flex justify-between font-mono text-[9.5px]">
                 <span className="text-slate-400 font-semibold">Device Tilt</span>

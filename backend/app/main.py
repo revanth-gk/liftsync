@@ -124,14 +124,20 @@ class SessionManager:
         self.raw_gyro.extend(gyro_batch)
 
     def compute_calibration_baseline(self) -> Dict[str, float]:
-        if len(self.rep_features_history) < 3:
+        # Allow calibration with as few as 1 rep (std defaults to 10% of mean)
+        if len(self.rep_features_history) < 1:
             return {}
         target_keys = ["jerk", "duration", "instability_ratio"]
         baseline = {}
         for k in target_keys:
             vals = [rep[k] for rep in self.rep_features_history]
-            baseline[f"{k}_mean"] = float(np.mean(vals))
-            baseline[f"{k}_std"] = float(np.std(vals))
+            mean_val = float(np.mean(vals))
+            std_val = float(np.std(vals)) if len(vals) > 1 else mean_val * 0.1
+            # Ensure std is never zero (would cause division-by-zero in CUSUM)
+            if std_val < 1e-4:
+                std_val = max(mean_val * 0.1, 0.01)
+            baseline[f"{k}_mean"] = mean_val
+            baseline[f"{k}_std"] = std_val
         return baseline
 
     def process_session(self) -> Dict[str, Any]:
@@ -277,12 +283,19 @@ async def websocket_endpoint(websocket: WebSocket):
                 result = session.process_session()
                 if session.mode == "calibrate":
                     baseline = session.compute_calibration_baseline()
-                    await websocket.send_json({
-                        "status": "calibration_completed",
-                        "exercise": session.exercise,
-                        "baseline": baseline,
-                        "data": result
-                    })
+                    if not baseline:
+                        # No reps detected at all — send informative error instead of empty baseline
+                        await websocket.send_json({
+                            "status": "error",
+                            "message": "No repetitions detected during calibration. Please perform at least 1 complete rep before stopping."
+                        })
+                    else:
+                        await websocket.send_json({
+                            "status": "calibration_completed",
+                            "exercise": session.exercise,
+                            "baseline": baseline,
+                            "data": result
+                        })
                 else:
                     await websocket.send_json({
                         "status": "session_stopped",

@@ -11,26 +11,36 @@ def detect_form_break(
     """
     Applies the Cumulative Sum (CUSUM) algorithm to detect statistical shifts
     in the repetition features, signaling form degradation.
+    
+    If a custom_baseline is provided (from calibration), it is used directly
+    regardless of rep count. Without a baseline, the first `baseline_count` reps
+    are used to establish reference statistics.
     """
     n_reps = len(features_list)
     composite_scores = [0.0] * n_reps
     cusum_values = [0.0] * n_reps
     
+    if n_reps == 0:
+        return -1, composite_scores, cusum_values
+
     # Features to track for degradation
     target_keys = ["jerk", "duration", "instability_ratio"]
     
     if custom_baseline:
-        # Load baseline parameters from pre-calculated dictionary
+        # Load baseline parameters from pre-calculated calibration dictionary
         means = {k: float(custom_baseline.get(f"{k}_mean", 1.0)) for k in target_keys}
         stds = {k: float(custom_baseline.get(f"{k}_std", 0.1)) for k in target_keys}
         for k in target_keys:
             if stds[k] < 1e-4:
                 stds[k] = means[k] * 0.1 if means[k] > 1e-4 else 0.1
+        # With a custom baseline we run CUSUM on ALL reps from the start
+        cusum_start_idx = 0
     else:
+        # Need at least baseline_count + 1 reps to detect any shift
         if n_reps <= baseline_count:
             return -1, composite_scores, cusum_values
             
-        # 1. Compute baseline mean and standard deviation from the first few reps
+        # 1. Compute baseline mean and std from the first `baseline_count` reps
         baseline_features = {k: [] for k in target_keys}
         for i in range(baseline_count):
             for k in target_keys:
@@ -43,8 +53,10 @@ def detect_form_break(
             stds[k] = np.std(baseline_features[k])
             if stds[k] < 1e-4:
                 stds[k] = means[k] * 0.1 if means[k] > 1e-4 else 0.1
+        # Skip CUSUM for baseline window reps
+        cusum_start_idx = baseline_count
             
-    # 2. Calculate normalized composite scores for each repetition
+    # 2. Calculate normalized composite scores for every repetition
     for i in range(n_reps):
         z_sum = 0.0
         for k in target_keys:
@@ -53,21 +65,21 @@ def detect_form_break(
             z_sum += z
         composite_scores[i] = float(z_sum / len(target_keys))
         
-    # 3. Run CUSUM algorithm sequentially
+    # 3. Run CUSUM algorithm sequentially (starting after baseline window)
     running_sum = 0.0
     break_idx = -1
     
     for i in range(n_reps):
-        if not custom_baseline and i < baseline_count:
+        if i < cusum_start_idx:
             cusum_values[i] = 0.0
             continue
             
-        # Standard CUSUM formulation: S_i = max(0, S_{i-1} + z_i - k)
+        # Standard CUSUM: S_i = max(0, S_{i-1} + z_i - k)
         score = composite_scores[i]
         running_sum = max(0.0, running_sum + score - k_allowance)
         cusum_values[i] = float(running_sum)
         
-        # If we exceed the threshold and haven't already flagged a break, record it
+        # Record first breach of threshold
         if running_sum > h_threshold and break_idx == -1:
             break_idx = i
             

@@ -2,8 +2,9 @@ import { useState, useEffect, useRef } from 'react';
 import { Layout } from './components/Layout';
 import { SensorManager } from './components/SensorManager';
 import { WorkoutReport } from './components/WorkoutReport';
+import { Dashboard } from './components/Dashboard';
 import { registerPWA } from './registerServiceWorker';
-import { Compass, Info, Dumbbell, Flame, Activity, Smartphone, ArrowRight, CheckCircle, Play, Timer, Sparkles } from 'lucide-react';
+import { Compass, Dumbbell, Flame, Activity, Smartphone, ArrowRight, CheckCircle, Play, Timer, Sparkles } from 'lucide-react';
 
 interface RepFeature {
   duration: number;
@@ -55,6 +56,9 @@ export function App() {
   const [isCalibrating, setIsCalibrating] = useState<boolean>(false);
   const [calibrationRepCount, setCalibrationRepCount] = useState<number>(0);
   
+  // Inline calibration success toast (replaces alert())
+  const [calibrationSuccess, setCalibrationSuccess] = useState<boolean>(false);
+
   // Timer states
   const [workoutDuration, setWorkoutDuration] = useState<number>(60); // in seconds
   const [timerSeconds, setTimerSeconds] = useState<number>(60);
@@ -71,7 +75,7 @@ export function App() {
       interval = window.setInterval(() => {
         setTimerSeconds(prev => {
           if (prev <= 1) {
-            // Timer expired! Stop the session which will prompt report transition
+            // Timer expired — stop session, report transition handled below
             setIsSessionActive(false);
             return 0;
           }
@@ -107,8 +111,12 @@ export function App() {
   const handleUpdateCalibrationBaseline = (baseline: any) => {
     setBaselines(prev => ({ ...prev, [selectedExercise]: baseline }));
     setIsCalibrating(false);
-    alert(`Calibration completed for ${activeExerciseObj.name}! Personalized baseline saved.`);
-    setCurrentStep('workout_setup');
+    // Show inline success toast instead of alert()
+    setCalibrationSuccess(true);
+    setTimeout(() => {
+      setCalibrationSuccess(false);
+      setCurrentStep('workout_setup');
+    }, 1800);
   };
 
   const handleSetIsCalibrating = (val: boolean) => {
@@ -258,7 +266,7 @@ export function App() {
             <div className="space-y-3 text-xs leading-relaxed text-slate-500">
               {activeExerciseObj.guide.steps.map((step, idx) => (
                 <div key={idx} className="flex items-start space-x-2.5">
-                  <span className="bg-slate-100 text-slate-700 font-extrabold w-4.5 h-4.5 rounded-full flex items-center justify-center shrink-0 mt-0.5 text-[9px]">
+                  <span className="bg-slate-100 text-slate-700 font-extrabold w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 text-[9px]">
                     {idx + 1}
                   </span>
                   <p className="text-slate-500 text-[11px] leading-normal">{step}</p>
@@ -267,7 +275,7 @@ export function App() {
             </div>
           </div>
 
-          {/* Action buttons to trigger next step */}
+          {/* Action buttons */}
           <div className="flex gap-3">
             <button
               onClick={() => setCurrentStep('calibrate')}
@@ -289,9 +297,20 @@ export function App() {
         </div>
       )}
 
-      {/* STEP 2: CALIBRATE PER REP */}
+      {/* STEP 2: CALIBRATE */}
       {currentStep === 'calibrate' && (
         <div className="space-y-6">
+          {/* Calibration success toast */}
+          {calibrationSuccess && (
+            <div className="bg-emerald-500 text-white rounded-2xl p-4 flex items-center gap-3 shadow-lg animate-pulse">
+              <CheckCircle className="w-5 h-5 shrink-0" />
+              <div>
+                <p className="font-bold text-sm">Calibration Complete!</p>
+                <p className="text-[11px] text-emerald-100">Personalized baseline saved. Proceeding…</p>
+              </div>
+            </div>
+          )}
+
           <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm space-y-3">
             <h2 className="font-bold text-slate-900 text-sm flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-amber-500" />
@@ -316,6 +335,13 @@ export function App() {
                 <h3 className="font-bold text-slate-800 text-sm">Calibration Set Active</h3>
                 <p className="text-[11px] text-slate-400 mt-1">Rep segmentations will count up automatically.</p>
               </div>
+              {/* Progress bar */}
+              <div className="w-full bg-amber-100 rounded-full h-2">
+                <div
+                  className="bg-amber-500 h-2 rounded-full transition-all duration-500"
+                  style={{ width: `${Math.min(100, (calibrationRepCount / 5) * 100)}%` }}
+                />
+              </div>
             </div>
           )}
 
@@ -333,7 +359,7 @@ export function App() {
             modeFilter="calibrate"
           />
 
-          {!isSessionActive && (
+          {!isSessionActive && !calibrationSuccess && (
             <button
               onClick={() => setCurrentStep('select_exercise')}
               className="w-full bg-slate-50 hover:bg-slate-100 text-slate-500 font-bold py-3 px-6 rounded-2xl transition-all text-xs text-center border border-slate-100"
@@ -449,7 +475,16 @@ export function App() {
             </div>
           )}
 
-          {/* Sensor stream controller in timed workout mode */}
+          {/* Live Dashboard — charts & rep breakdown visible during workout */}
+          {sessionData && sessionData.rep_count > 0 && (
+            <Dashboard
+              sessionData={sessionData}
+              isSessionActive={isSessionActive}
+              exercise={selectedExercise}
+            />
+          )}
+
+          {/* Sensor stream controller */}
           <SensorManager 
             onUpdateSessionData={handleUpdateSessionData}
             isSessionActive={isSessionActive}

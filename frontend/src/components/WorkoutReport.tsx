@@ -1,4 +1,4 @@
-import { Award, AlertTriangle, RefreshCw, X, ShieldAlert, Sparkles, CheckCircle, Flame, Info } from 'lucide-react';
+import { Award, AlertTriangle, ShieldAlert, Sparkles, CheckCircle, Flame, Info, Activity } from 'lucide-react';
 import { Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -66,30 +66,74 @@ interface WorkoutReportProps {
   onClose: () => void;
 }
 
+// Exercise names for display
+const exerciseNames: Record<string, string> = {
+  bicep_curl: 'Bicep Curls',
+  squat: 'Barbell/Bodyweight Squats',
+  overhead_press: 'Overhead Shoulder Press'
+};
+
 export function WorkoutReport({ exercise, sessionData, onClose }: WorkoutReportProps) {
-  if (!sessionData || sessionData.rep_count === 0) return null;
+  // --- EMPTY STATE: null session or zero reps ---
+  if (!sessionData || sessionData.rep_count === 0) {
+    return (
+      <div className="bg-white w-full rounded-3xl border border-slate-100 overflow-hidden shadow-sm">
+        {/* Header */}
+        <div className="px-6 py-5 bg-gradient-to-r from-slate-50 to-white border-b border-slate-100 flex items-center space-x-2.5">
+          <Sparkles className="w-5 h-5 text-blue-600" />
+          <div>
+            <h2 className="font-extrabold text-slate-950 text-sm">Workout Summary Report</h2>
+            <p className="text-[10px] text-slate-400 font-medium">{exerciseNames[exercise] || 'Exercise'}</p>
+          </div>
+        </div>
+
+        {/* Empty state body */}
+        <div className="p-8 flex flex-col items-center justify-center text-center space-y-4">
+          <div className="bg-slate-100 text-slate-400 p-5 rounded-full">
+            <Activity className="w-10 h-10" />
+          </div>
+          <div>
+            <h3 className="font-bold text-slate-800 text-sm">No Repetitions Detected</h3>
+            <p className="text-xs text-slate-400 mt-1 max-w-xs leading-relaxed">
+              The session ended before any reps could be segmented. Make sure your phone is securely mounted and the engine is connected before starting.
+            </p>
+          </div>
+          <div className="bg-amber-50 border border-amber-100 rounded-2xl p-3 text-left w-full">
+            <p className="text-[11px] text-amber-800 font-medium leading-relaxed">
+              <span className="font-bold">Tip:</span> Hold a rep for at least 0.8s. The engine needs ~1.5s of data before detecting the first rep.
+            </p>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 bg-slate-50 border-t border-slate-100">
+          <button
+            onClick={onClose}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3.5 rounded-2xl font-bold text-xs shadow-md shadow-blue-100 transition-colors"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const { rep_count, reps, form_break_idx, recommended_ceiling } = sessionData;
 
   // 1. Calculate Biomechanical Performance Score
   let score = 100;
   if (form_break_idx !== -1) {
-    // Score reflects the proportion of completed repetitions with stable form
     const cleanRatio = (form_break_idx - 1) / rep_count;
-    // Scale score between 10 and 80 based on clean reps percentage
     score = Math.round(10 + cleanRatio * 70);
   } else {
-    // Deduct slightly based on overall average instability and jerk tremor
     const avgInstability = reps.reduce((acc, r) => acc + r.features.instability_ratio, 0) / reps.length;
     const avgJerk = reps.reduce((acc, r) => acc + r.features.jerk, 0) / reps.length;
-    
     const instabilityPen = Math.min(15, avgInstability * 40);
     const jerkPen = Math.min(15, Math.max(0, avgJerk - 10) * 0.15);
     score = Math.round(100 - instabilityPen - jerkPen);
   }
   score = Math.max(10, Math.min(100, score));
 
-  // Get score description and color
   let scoreColor = 'text-emerald-600 bg-emerald-50 border-emerald-100';
   let scoreLabel = 'Elite Form';
   if (score < 70) {
@@ -154,13 +198,6 @@ export function WorkoutReport({ exercise, sessionData, onClose }: WorkoutReportP
 
   const diagnostics = getDiagnostics();
 
-  // Exercise names for display
-  const exerciseNames: Record<string, string> = {
-    bicep_curl: 'Bicep Curls',
-    squat: 'Barbell/Bodyweight Squats',
-    overhead_press: 'Overhead Shoulder Press'
-  };
-
   // Chart configuration
   const chartLabels = reps.map((r) => `Rep ${r.rep_index}`);
   const compositeScores = reps.map((r) => r.composite_score);
@@ -170,12 +207,12 @@ export function WorkoutReport({ exercise, sessionData, onClose }: WorkoutReportP
     labels: chartLabels,
     datasets: [
       {
-        label: 'CUSUM Deviation (Threshold: 3.0)',
+        label: 'CUSUM Deviation (Limit: 3.0)',
         data: cusumValues,
         borderColor: '#f43f5e',
-        backgroundColor: 'rgba(244, 63, 94, 0.05)',
+        backgroundColor: 'rgba(244, 63, 94, 0.07)',
         borderWidth: 2.5,
-        tension: 0.15,
+        tension: 0.2,
         fill: true,
         pointBackgroundColor: reps.map((r) => 
           form_break_idx !== -1 && r.rep_index >= form_break_idx ? '#f43f5e' : '#cbd5e1'
@@ -187,7 +224,7 @@ export function WorkoutReport({ exercise, sessionData, onClose }: WorkoutReportP
         label: 'Form Error Score',
         data: compositeScores,
         borderColor: '#2563eb',
-        borderWidth: 1.5,
+        borderWidth: 2,
         borderDash: [4, 4],
         tension: 0.1,
         pointBackgroundColor: '#2563eb',
@@ -242,34 +279,35 @@ export function WorkoutReport({ exercise, sessionData, onClose }: WorkoutReportP
             <p className="text-[10px] text-slate-400 font-medium">{exerciseNames[exercise] || 'Exercise'}</p>
           </div>
         </div>
+        {/* Score badge in header */}
+        <div className={`flex flex-col items-center justify-center w-14 h-14 rounded-full border-4 bg-white shadow-inner ${
+          score >= 90 ? 'border-emerald-500' : score >= 70 ? 'border-amber-400' : 'border-rose-500'
+        }`}>
+          <span className="text-xl font-black text-slate-800 leading-none">{score}</span>
+          <span className="text-[7px] text-slate-400 font-bold uppercase tracking-wide">Score</span>
+        </div>
       </div>
 
       {/* Content */}
-      <div className="p-6 space-y-6">
-        {/* Score Ring & Rating */}
-        <div className="flex items-center space-x-5 bg-slate-50/60 p-4.5 rounded-2xl border border-slate-100">
-          <div className={`relative w-20 h-20 rounded-full flex flex-col items-center justify-center border-4 ${
-            score >= 90 ? 'border-emerald-500' : score >= 70 ? 'border-amber-400' : 'border-rose-500'
-          } bg-white shadow-inner shrink-0`}>
-            <span className="text-2xl font-black text-slate-800 leading-none">{score}</span>
-            <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wide mt-1">Score</span>
-          </div>
-          
-          <div className="space-y-1">
+      <div className="p-5 space-y-5">
+        {/* Score label + summary */}
+        <div className="flex items-center space-x-4 bg-slate-50/60 p-4 rounded-2xl border border-slate-100">
+          <div className="space-y-1 flex-1">
             <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${scoreColor}`}>
               {scoreLabel}
             </span>
             <h3 className="font-extrabold text-slate-800 text-xs">Biomechanical Stability</h3>
             <p className="text-[10px] text-slate-400 font-medium leading-relaxed">
-              Based on segmented repetitions vs calibrated baseline.
+              Based on {rep_count} segmented repetition{rep_count !== 1 ? 's' : ''} vs. calibrated baseline.
             </p>
           </div>
+          <Award className={`w-8 h-8 shrink-0 ${score >= 90 ? 'text-emerald-500' : score >= 70 ? 'text-amber-400' : 'text-rose-400'}`} />
         </div>
 
         {/* Stats Grid */}
         <div className="grid grid-cols-2 gap-3">
           <div className="border border-slate-100 p-3.5 rounded-xl text-center bg-slate-50/30">
-            <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Completed reps</span>
+            <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Completed Reps</span>
             <p className="text-xl font-extrabold text-slate-800 mt-1">
               {rep_count} <span className="text-xs font-semibold text-slate-400">Reps</span>
             </p>
@@ -278,9 +316,7 @@ export function WorkoutReport({ exercise, sessionData, onClose }: WorkoutReportP
           <div className="border border-slate-100 p-3.5 rounded-xl text-center bg-slate-50/30">
             <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Form Breakpoint</span>
             {form_break_idx !== -1 ? (
-              <p className="text-xl font-extrabold text-rose-500 mt-1">
-                Rep {form_break_idx}
-              </p>
+              <p className="text-xl font-extrabold text-rose-500 mt-1">Rep {form_break_idx}</p>
             ) : (
               <p className="text-xl font-extrabold text-emerald-500 mt-1 flex items-center justify-center gap-1">
                 <CheckCircle className="w-4 h-4 inline" /> None
@@ -299,7 +335,7 @@ export function WorkoutReport({ exercise, sessionData, onClose }: WorkoutReportP
         </div>
 
         {/* CUSUM & Error Graph */}
-        <div className="bg-slate-50/30 border border-slate-100 p-4.5 rounded-2xl space-y-3">
+        <div className="bg-slate-50/30 border border-slate-100 p-4 rounded-2xl space-y-3">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="font-extrabold text-xs text-slate-900">Sequential Rep Stability</h3>
@@ -338,13 +374,32 @@ export function WorkoutReport({ exercise, sessionData, onClose }: WorkoutReportP
           <ul className="space-y-2">
             {diagnostics.advice.map((tip, idx) => (
               <li key={idx} className="flex items-start space-x-2.5 text-xs text-slate-600 leading-relaxed">
-                <span className="bg-blue-50 text-blue-600 font-extrabold w-4.5 h-4.5 rounded-full flex items-center justify-center shrink-0 mt-0.5 text-[9px]">
+                <span className="bg-blue-50 text-blue-600 font-extrabold w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 text-[9px]">
                   {idx + 1}
                 </span>
                 <p className="text-[11px] text-slate-500 font-medium">{tip}</p>
               </li>
             ))}
           </ul>
+        </div>
+
+        {/* Rep classification summary */}
+        <div className="bg-slate-50/30 border border-slate-100 p-4 rounded-2xl">
+          <h4 className="font-bold text-[10px] text-slate-400 uppercase tracking-wider mb-3">Rep Classification</h4>
+          <div className="flex flex-wrap gap-2">
+            {reps.map((r) => (
+              <span
+                key={r.rep_index}
+                className={`text-[10px] font-bold px-2.5 py-1 rounded-xl border ${
+                  r.classification === 'Fatigued'
+                    ? 'bg-rose-50 text-rose-600 border-rose-100'
+                    : 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                } ${form_break_idx !== -1 && r.rep_index >= form_break_idx ? 'ring-1 ring-rose-400' : ''}`}
+              >
+                #{r.rep_index} {r.classification === 'Fatigued' ? '⚠️' : '✓'}
+              </span>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -360,3 +415,5 @@ export function WorkoutReport({ exercise, sessionData, onClose }: WorkoutReportP
     </div>
   );
 }
+
+export default WorkoutReport;
