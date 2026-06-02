@@ -87,6 +87,7 @@ class SessionManager:
         self.rep_features_history = []
         self.rep_classifications = []
         self.dominant_axis = "unknown"
+        self.exercise = "unknown"
 
     def add_data(self, accel_batch: List[List[float]], gyro_batch: List[List[float]]):
         self.raw_accel.extend(accel_batch)
@@ -173,7 +174,8 @@ class SessionManager:
             "reps": rep_results,
             "form_break_idx": form_break_idx + 1 if form_break_idx != -1 else -1, # Return 1-indexed to match UI rep numbers
             "recommended_ceiling": recommended_ceiling,
-            "dominant_axis": self.dominant_axis
+            "dominant_axis": self.dominant_axis,
+            "exercise": self.exercise
         }
 
 @app.websocket("/ws/session")
@@ -192,8 +194,9 @@ async def websocket_endpoint(websocket: WebSocket):
             if event == "start":
                 # Reset/Initialize session state
                 session = SessionManager()
-                await websocket.send_json({"status": "session_started"})
-                print("[LiftSync WS] Session started.")
+                session.exercise = data.get("exercise", "bicep_curl")
+                await websocket.send_json({"status": "session_started", "exercise": session.exercise})
+                print(f"[LiftSync WS] Session started for exercise: {session.exercise}")
                 
             elif event == "data":
                 accel = data.get("accel", [])

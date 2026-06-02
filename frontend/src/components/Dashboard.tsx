@@ -64,9 +64,10 @@ interface SessionData {
 interface DashboardProps {
   sessionData: SessionData | null;
   isSessionActive: boolean;
+  exercise: string;
 }
 
-export function Dashboard({ sessionData, isSessionActive }: DashboardProps) {
+export function Dashboard({ sessionData, isSessionActive, exercise }: DashboardProps) {
   const [expandedRep, setExpandedRep] = useState<number | null>(null);
 
   if (!sessionData || sessionData.rep_count === 0) {
@@ -176,6 +177,9 @@ export function Dashboard({ sessionData, isSessionActive }: DashboardProps) {
               <h3 className="font-bold text-sm">Form Degradation Flagged</h3>
               <p className="text-xs mt-0.5 leading-relaxed">
                 Significant biomechanical shift detected at <span className="font-bold">Repetition {form_break_idx}</span>. Set target ceiling to <span className="font-bold">{recommended_ceiling} reps</span> to prevent injury.
+                {exercise === 'bicep_curl' && " Tip: Keep your elbows locked at your sides to prevent shoulder/back momentum."}
+                {exercise === 'squat' && " Tip: Ensure you keep your knees tracking outward and hit parallel depth."}
+                {exercise === 'overhead_press' && " Tip: Squeeze your glutes and brace your core to prevent lower back arching."}
               </p>
             </div>
           </>
@@ -186,6 +190,7 @@ export function Dashboard({ sessionData, isSessionActive }: DashboardProps) {
               <h3 className="font-bold text-sm">Biomechanical Form Stable</h3>
               <p className="text-xs mt-0.5 leading-relaxed">
                 Repetitions are consistent with baseline models. Dominant tracking axis: <span className="font-mono bg-emerald-100/50 px-1 py-0.5 rounded text-[10px] font-bold">{dominant_axis}</span>.
+                {isSessionActive && " Keep pushing with controlled tempo."}
               </p>
             </div>
           </>

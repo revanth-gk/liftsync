@@ -1,0 +1,34 @@
+# LiftSync Deployment Blueprint
+# This file enables one-click deployments of the entire monorepo on Render.
+# To deploy: Go to Render Dashboard -> Blueprints -> New Blueprint Instance -> Select your repository.
+
+services:
+  # 1. FastAPI Web Service (Backend Engine)
+  - type: web
+    name: liftsync-backend
+    env: python
+    region: oregon # Render default
+    plan: free # Use free tier by default
+    buildCommand: pip install -r backend/app/requirements.txt
+    startCommand: cd backend/app && uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10.0
+      - key: PORT
+        value: 10000
+
+  # 2. Static Site (Frontend App - Optional Render Host)
+  # NOTE: You can alternatively host the frontend on Vercel (highly recommended for performance).
+  # If hosting the frontend on Vercel, delete this static service block and connect your frontend folder directly to Vercel.
+  - type: web
+    name: liftsync-frontend
+    env: static
+    region: oregon
+    plan: free
+    buildCommand: cd frontend && npm install && npm run build
+    publishDir: frontend/dist
+    envVars:
+      - key: VITE_WS_URL
+        # Replace this with your actual backend Render Web Service URL + /ws/session
+        # Example: wss://liftsync-backend.onrender.com/ws/session
+        value: wss://liftsync-backend.onrender.com/ws/session

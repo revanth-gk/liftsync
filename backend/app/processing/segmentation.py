@@ -164,8 +164,8 @@ def segment_reputations(
             if r['start_idx'] < prev['end_idx']:
                 overlap_ratio = (prev['end_idx'] - r['start_idx']) / min(prev['end_idx'] - prev['start_idx'], r['end_idx'] - r['start_idx'])
                 if overlap_ratio > 0.3: # Overlap greater than 30%
-                    prev_peak_val = rectified_signal[prev['peak_idx']]
-                    curr_peak_val = rectified_signal[r['peak_idx']]
+                    prev_peak_val = processed_signal[prev['peak_idx']]
+                    curr_peak_val = processed_signal[r['peak_idx']]
                     if curr_peak_val > prev_peak_val:
                         filtered_reps[-1] = r
                 else:

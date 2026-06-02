@@ -7,13 +7,15 @@ interface SensorManagerProps {
   isSessionActive: boolean;
   setIsSessionActive: (active: boolean) => void;
   onSessionReset: () => void;
+  selectedExercise: string;
 }
 
 export function SensorManager({
   onUpdateSessionData,
   isSessionActive,
   setIsSessionActive,
-  onSessionReset
+  onSessionReset,
+  selectedExercise
 }: SensorManagerProps) {
   const {
     permission,
@@ -57,10 +59,17 @@ export function SensorManager({
     // 2. Establish WebSocket connection
     setWsStatus('connecting');
     
-    // Resolve websocket URL: use current page host but port 8000 for backend
-    // Falls back to localhost if hostname is invalid.
-    const hostname = window.location.hostname || 'localhost';
-    const wsUrl = `ws://${hostname}:8000/ws/session`;
+    // Resolve websocket URL dynamically
+    let wsUrl = (import.meta as any).env?.VITE_WS_URL;
+    if (!wsUrl) {
+      const hostname = window.location.hostname || 'localhost';
+      if (hostname === 'localhost' || hostname === '127.0.0.1') {
+        wsUrl = `ws://${hostname}:8000/ws/session`;
+      } else {
+        const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        wsUrl = `${protocol}://${hostname}/ws/session`;
+      }
+    }
     
     try {
       const ws = new WebSocket(wsUrl);
@@ -69,8 +78,8 @@ export function SensorManager({
       ws.onopen = () => {
         setWsStatus('connected');
         setIsSessionActive(true);
-        // Send initial start signal
-        ws.send(JSON.stringify({ event: 'start' }));
+        // Send initial start signal with selected exercise
+        ws.send(JSON.stringify({ event: 'start', exercise: selectedExercise }));
         // Start capturing device motion
         startListening();
       };
