@@ -72,7 +72,16 @@ export function SensorManager({
     if (!wsUrl) {
       const host = window.location.host || 'localhost:3000';
       const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-      wsUrl = `${protocol}://${host}/ws/session`;
+      
+      // Smart Auto-Resolution for Render Deployments:
+      // If deployed on Render (e.g. liftsync-frontend-xxxx.onrender.com),
+      // auto-infer the backend URL by replacing 'frontend' with 'backend'.
+      if (host.includes('liftsync-frontend') && host.includes('onrender.com')) {
+        const backendHost = host.replace('liftsync-frontend', 'liftsync-backend');
+        wsUrl = `${protocol}://${backendHost}/ws/session`;
+      } else {
+        wsUrl = `${protocol}://${host}/ws/session`;
+      }
     }
     
     try {
